@@ -13,8 +13,10 @@ uint8 Fflag = 0;
 uint8 Rflag = 0;
 uint8 vflag = 0;
 
+uint8 printPath = 0;
+
 void
-grep(char *pattern, int fd)
+grep(char *pattern, int fd, char *path)
 {
   int n, m;
   char *p, *q;
@@ -32,6 +34,8 @@ grep(char *pattern, int fd)
        * Simple xor operation */
       if (match(pattern, p) != vflag) {
         *q = '\n';
+	if (printPath)
+	  fprintf(1, "\x1b[31m%s:\x1b[0m", path);
         write(1, p, q+1 - p);
       }
       p = q+1;
@@ -77,16 +81,18 @@ main(int argc, char *argv[])
       break;
     }
   }
-  /* Mostly so I don't get unused variable errors*/
-  if (Rflag){
-	  fprintf(1, "Flag found\n");
-  }
 
   pattern = argv[i++];
 
   if(argc <= i){
-    grep(pattern, 0);
+    printPath = 0;
+    grep(pattern, 0, "\0");
     exit(0);
+  }
+
+  // Print path if recursion is used or if multiple files are passed
+  if(Rflag || i + 1 < argc) {
+    printPath = 1;
   }
 
   while(i < argc){
@@ -94,7 +100,7 @@ main(int argc, char *argv[])
       printf("grep: cannot open %s\n", argv[i]);
       exit(1);
     }
-    grep(pattern, fd);
+    grep(pattern, fd, argv[i]);
     close(fd);
     i++;
   }
