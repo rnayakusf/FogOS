@@ -2,13 +2,15 @@
 
 #include "kernel/types.h"
 #include "kernel/stat.h"
+#include "kernel/fs.h"
 #include "user/user.h"
 
 char buf[1024];
 int match(char*, char*);
+int dirgrep(char*, int, char*);
 
-/* -F, -R, -v flags */
-/* No bool type, so use uint8 instead */
+// -F, -R, -v flags
+// No bool type, so use uint8 instead
 uint8 Fflag = 0;
 uint8 Rflag = 0;
 uint8 vflag = 0;
@@ -22,20 +24,20 @@ grep(char *pattern, int fd, char *path)
   char *p, *q;
 
   m = 0;
-  /* Write continuously to the buffer. If runs out of space, move current
-   * position to beginning of buffer and read again.*/
+  // Write continuously to the buffer. If runs out of space, move current
+  // position to beginning of buffer and read again.
   while((n = read(fd, buf+m, sizeof(buf)-m-1)) > 0){
     m += n;
     buf[m] = '\0';
     p = buf;
     while((q = strchr(p, '\n')) != 0){
       *q = 0;
-      /* Print line if match and no -v flag or if no match and -v flag
-       * Simple xor operation */
+      // Print line if match and no -v flag or if no match and -v flag
+      // Simple xor operation
       if (match(pattern, p) != vflag) {
         *q = '\n';
-	if (printPath)
-	  fprintf(1, "\x1b[31m%s:\x1b[0m", path);
+        if (printPath)
+          fprintf(1, "\x1b[31m%s:\x1b[0m", path);
         write(1, p, q+1 - p);
       }
       p = q+1;
@@ -58,23 +60,23 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  /* check for flags */
+  // check for flags
   i = 1;
   while(1) {
     if (argv[i][0] == '-') {
       switch (argv[i][1]) {
         case 'F':
-	  Fflag = 1;
-	  break;
+          Fflag = 1;
+          break;
         case 'R':
-	  Rflag = 1;
-	  break;
+          Rflag = 1;
+          break;
         case 'v':
-	  vflag = 1;
-	  break;
-	default:
-	  fprintf(2, "Unrecognized flag: -%c\n", argv[i][1]);
-	  exit(1);
+          vflag = 1;
+          break;
+        default:
+          fprintf(2, "Unrecognized flag: -%c\n", argv[i][1]);
+          exit(1);
       }
       i++;
     } else {
@@ -97,14 +99,70 @@ main(int argc, char *argv[])
 
   while(i < argc){
     if((fd = open(argv[i], 0)) < 0){
-      printf("grep: cannot open %s\n", argv[i]);
+      fprintf(2, "grep: cannot open %s\n", argv[i]);
       exit(1);
     }
-    grep(pattern, fd, argv[i]);
+
+    // Recursion for -R
+    if (Rflag) {
+      dirgrep(pattern, fd, argv[i]);
+    } else {
+      grep(pattern, fd, argv[i]);
+    }
+
+    // cleanup
     close(fd);
     i++;
   }
   exit(0);
+}
+
+// Recursively go through directories
+int
+dirgrep(char *pattern, int fd, char *path) {
+  if (fstat(fd, &st) < 0) {
+    fprintf(2, "grep: cannot stat %s", path);
+    return 1;
+  }
+
+  switch (st.type) {
+    case T_FILE:
+      grep(pattern, fd, path);
+      break;
+    case T_DIR:
+      char buf[1024], *p;
+      struct stat st;
+      struct dirent de;
+      int child_fd;
+
+      strcpy(buf, path);
+      p = buf + strlen(buf);
+      *p++ = '/';
+
+      while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+        if(de.inum == 0)
+          continue;
+
+        // skip . and ..
+        if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
+          continue;
+
+        memmove(p, de.name, DIRSIZ);
+
+        // run dirgrep on the new path
+        if ((child_fd = open(buf, 0)) < 0){
+          fprintf(2, "grep: cannot open %s\n", buf);
+          continue;
+        }
+
+        dirgrep(pattern, child_fd, buf);
+        close(child_fd);
+      }
+      break;
+    case default:
+      continue;
+  }
+  return 0;
 }
 
 // Regexp matcher from Kernighan & Pike,
