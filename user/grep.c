@@ -120,6 +120,8 @@ main(int argc, char *argv[])
 // Recursively go through directories
 int
 dirgrep(char *pattern, int fd, char *path) {
+  struct stat st;
+
   if (fstat(fd, &st) < 0) {
     fprintf(2, "grep: cannot stat %s", path);
     return 1;
@@ -131,7 +133,6 @@ dirgrep(char *pattern, int fd, char *path) {
       break;
     case T_DIR:
       char buf[1024], *p;
-      struct stat st;
       struct dirent de;
       int child_fd;
 
@@ -140,11 +141,8 @@ dirgrep(char *pattern, int fd, char *path) {
       *p++ = '/';
 
       while (read(fd, &de, sizeof(de)) == sizeof(de)) {
-        if(de.inum == 0)
-          continue;
-
-        // skip . and ..
-        if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
+        // skip if not a proper file or directory
+        if (de.inum == 0 || strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
           continue;
 
         memmove(p, de.name, DIRSIZ);
@@ -158,9 +156,6 @@ dirgrep(char *pattern, int fd, char *path) {
         dirgrep(pattern, child_fd, buf);
         close(child_fd);
       }
-      break;
-    case default:
-      continue;
   }
   return 0;
 }
