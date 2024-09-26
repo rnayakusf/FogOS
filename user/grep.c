@@ -132,7 +132,7 @@ dirgrep(char *pattern, int fd, char *path) {
       grep(pattern, fd, path);
       break;
     case T_DIR:
-      char buf[1024], *p;
+      char buf[128], *p;
       struct dirent de;
       int child_fd;
 
