@@ -17,6 +17,9 @@ uint8 vflag = 0;
 
 uint8 printPath = 0;
 
+// 0 if a match, 1 if not (2 if error)
+uint8 exitVal = 1;
+
 void
 grep(char *pattern, int fd, char *path)
 {
@@ -39,6 +42,7 @@ grep(char *pattern, int fd, char *path)
         if (printPath)
           fprintf(1, "\x1b[31m%s:\x1b[0m", path);
         write(1, p, q+1 - p);
+	exitVal = 0;
       }
       p = q+1;
     }
@@ -57,7 +61,7 @@ main(int argc, char *argv[])
 
   if(argc <= 1){
     fprintf(2, "usage: grep [-F] [-R] [-v] pattern [file ...]\n");
-    exit(1);
+    exit(2);
   }
 
   // check for flags
@@ -76,7 +80,7 @@ main(int argc, char *argv[])
           break;
         default:
           fprintf(2, "Unrecognized flag: -%c\n", argv[i][1]);
-          exit(1);
+          exit(2);
       }
       i++;
     } else {
@@ -89,7 +93,7 @@ main(int argc, char *argv[])
   if(argc <= i){
     printPath = 0;
     grep(pattern, 0, "\0");
-    exit(0);
+    exit(exitVal);
   }
 
   // Print path if recursion is used or if multiple files are passed
@@ -114,7 +118,7 @@ main(int argc, char *argv[])
     close(fd);
     i++;
   }
-  exit(0);
+  exit(exitVal);
 }
 
 // Recursively go through directories
@@ -124,6 +128,7 @@ dirgrep(char *pattern, int fd, char *path) {
 
   if (fstat(fd, &st) < 0) {
     fprintf(2, "grep: cannot stat %s", path);
+    exitVal = 2;
     return 1;
   }
 
@@ -150,6 +155,7 @@ dirgrep(char *pattern, int fd, char *path) {
         // run dirgrep on the new path
         if ((child_fd = open(buf, 0)) < 0){
           fprintf(2, "grep: cannot open %s\n", buf);
+	  exitVal = 2;
           continue;
         }
 
